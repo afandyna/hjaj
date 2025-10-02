@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP GPS Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+        #devices { display: flex; flex-wrap: wrap; justify-content: center; }
+        .device { border: 1px solid #ccc; margin: 10px; padding: 15px; width: 220px; border-radius: 5px; }
+        #global-time { font-size: 1.2em; margin: 20px; font-weight: bold; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+<body>
+    <h1>ESP GPS Dashboard</h1>
+    <div id="global-time">Global Time: Loading...</div>
+    <div id="devices"></div>
+
+    <script>
+        // Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyBNlL_8Y0dNsL1X02w8M-a_ApiizR-d3wM",
+            databaseURL: "https://data-292e2-default-rtdb.firebaseio.com/",
+            projectId: "data-292e2"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Update global time
+        function updateGlobalTime() {
+            const now = new Date();
+            document.getElementById('global-time').innerText = `Global Time: ${now.toUTCString()}`;
+        }
+        setInterval(updateGlobalTime, 1000);
+        updateGlobalTime();
+
+        // Format epoch days to DD/MM/YYYY
+        function formatDateFromEpochDays(epochDays) {
+            if (!epochDays) return 'N/A';
+            const date = new Date(epochDays * 86400 * 1000);
+            return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+        }
+
+        // Listen for devices
+        const devicesRef = db.ref('/devices');
+        devicesRef.on('value', (snapshot) => {
+            const devicesDiv = document.getElementById('devices');
+            devicesDiv.innerHTML = '';
+            snapshot.forEach((childSnapshot) => {
+                const mac = childSnapshot.key;
+                const data = childSnapshot.val();
+                const gps = data.gps || {};
+                const button = data.button || {};
+
+                // Create Google Maps URL
+                let mapLink = gps.latitude && gps.longitude 
+                    ? `<a href="https://www.google.com/maps?q=${gps.latitude},${gps.longitude}" target="_blank">View on Google Maps</a>`
+                    : 'Location: N/A';
+
+                // Device display
+                let deviceHTML = `<div class="device">
+                    <h3>MAC: ${mac}</h3>
+                    <p>Latitude: ${gps.latitude || 'N/A'}</p>
+                    <p>Longitude: ${gps.longitude || 'N/A'}</p>
+                    <p>${mapLink}</p>
+                </div>`;
+                devicesDiv.innerHTML += deviceHTML;
+
+                // Button press alert
+                if (button.state === true) {
+                    const pressLat = button.press_latitude || 'N/A';
+                    const pressLng = button.press_longitude || 'N/A';
+                    const pressDate = formatDateFromEpochDays(button.press_date);
+                    const pressTime = button.press_time || 'N/A';
+                    const alertMapLink = pressLat !== 'N/A' && pressLng !== 'N/A'
+                        ? `https://www.google.com/maps?q=${pressLat},${pressLng}`
+                        : 'N/A';
+
+                    const alertMessage = `Alert! Button pressed on ${mac}\n` +
+                                        `Date: ${pressDate}\n` +
+                                        `Time: ${pressTime}\n` +
+                                        `Location: Lat ${pressLat}, Lng ${pressLng}\n` +
+                                        `Map: ${alertMapLink}`;
+                    alert(alertMessage);
+
+                    // Reset button state
+                    db.ref(`/devices/${mac}/button/state`).set(false);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
